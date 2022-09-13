@@ -23,9 +23,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import mean_absolute_error as MAE
-from sklearn import set_config
-
-
 
 
 ####################################
@@ -422,10 +419,10 @@ def evaluate_model(model, train, test, n_days):
  
     # baseline
     baseline = MAE(y_te, np.median(y_tr) * np.ones(len(y_te)))
-    print("baseline MAE: {:.2f}".format(baseline))
+    print("simple baseline MAE: {:.0f}".format(baseline))
 
     baseline_lag = MAE(y_te, X_te["load_lag"])
-    print("smart baseline MAE: {:.2f}".format(baseline_lag))
+    print("smart baseline MAE: {:.0f}".format(baseline_lag))
 
     if list(model.get_params().keys())[6]=='estimator__ridge':
 
@@ -433,7 +430,7 @@ def evaluate_model(model, train, test, n_days):
         y_pred = model.predict(X_te)
 
         model_mae = MAE(y_te, y_pred)
-        print("ridge regression MAE: {:.2f}".format(model_mae))
+        print("ridge regression MAE: {:.0f}".format(model_mae))
         
     else:
         
@@ -441,7 +438,7 @@ def evaluate_model(model, train, test, n_days):
         y_pred = model.predict(X_te)
 
         model_mae = MAE(y_te, y_pred)
-        print("random forest regression MAE: {:.2f}".format(model_mae))
+        print("random forest regression MAE: {:.0f}".format(model_mae))
     
     print('\n')
     
@@ -454,14 +451,15 @@ def evaluate_model(model, train, test, n_days):
     axes[0].set_yticks(np.arange(3))
     axes[0].set_yticklabels(("median as baseline", "previous hour as baseline", "model"))
 #    axes[0].set_xlabel("MAE")
-    axes[0].set_title("mean absolute error")    
+    axes[0].set_title("mean absolute error (MAE) for test data")    
     axes[0].spines['top'].set_visible(False)
     axes[0].spines['right'].set_visible(False)
     axes[0].spines['bottom'].set_visible(False)
 
-    axes[1].plot(y_te.values[-n_days * 24 :], lw=2, label="actual loads")
-    axes[1].plot(y_pred[-n_days * 24 :], ls="-.", lw=2, label="model predicted loads")
+    axes[1].plot(y_te.values[-n_days * 24 :], lw=1.5, label="actual loads")
+    axes[1].plot(np.median(y_tr) * np.ones(n_days * 24),c="k", ls=":" , lw=1.5,label="median loads")
     axes[1].plot(X_te["load_lag"].values[-n_days * 24 :],ls="--", lw=1.5,label="loads from the previous hour")
+    axes[1].plot(y_pred[-n_days * 24 :], ls=":", lw=2, label="model predicted loads")
 
     axes[1].set_title('Actual vs predicted loads during the last {} days of the test set'.format(n_days))
     axes[1].set_xlabel('hours')
