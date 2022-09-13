@@ -66,8 +66,6 @@ def info_data(df):
 
 def plot_data():
     
-
-
     # load data and rename columns
     df = pd.read_csv(os.path.join('data','energy_data.csv'), index_col=0, parse_dates=True)
     df.rename(columns={"load": "electric load", "temp": "temperature"},inplace=True)
@@ -89,12 +87,12 @@ def plot_data():
     fig, ax = plt.subplots(2, 1, figsize=(15, 7), gridspec_kw={"hspace": 0.6})
 
     ax[0].plot(df["electric load"],color='skyblue')
-    ax[0].set_title("Hourly electric load",fontsize=14)
+    ax[0].set_title("hourly electric load",fontsize=14)
     ax[0].set_ylabel("electric load (MW)",fontsize=14)
     ax[0].tick_params(labelsize=12)
     
     ax[1].plot(df["temperature"],color='skyblue')
-    ax[1].set_title("Hourly temperature",fontsize=14)
+    ax[1].set_title("hourly temperature",fontsize=14)
     ax[1].set_ylabel("temperature",fontsize=14)
     ax[1].tick_params(labelsize=12)
 
@@ -302,7 +300,7 @@ def train_model(train, select_model):
         fit_model.fit(X_tr, y_tr)
         
         print('Training with grid search and cross-validation is done!')
-        print('A total of {} models are fitted'.format(n_split * len(grid['ridge__alpha'])))  
+        print('A total of {} models were fitted'.format(n_split * len(grid['ridge__alpha'])))  
         
         print('\n')
         print('Here is the results of grid search:')
@@ -435,7 +433,7 @@ def evaluate_model(model, train, test, n_days):
         y_pred = model.predict(X_te)
 
         model_mae = MAE(y_te, y_pred)
-        print("linear regression MAE: {:.2f}".format(model_mae))
+        print("ridge regression MAE: {:.2f}".format(model_mae))
         
     else:
         
@@ -449,14 +447,14 @@ def evaluate_model(model, train, test, n_days):
     
     # plot the prediction
     fig, axes = plt.subplots(
-        2, 1, figsize=(12, 7), gridspec_kw={"hspace": 0.75}
+        2, 1, figsize=(10, 7), gridspec_kw={"hspace": 0.75}
     )
 
     axes[0].barh(np.arange(3), [baseline, baseline_lag, model_mae],color='skyblue', fill=False)
     axes[0].set_yticks(np.arange(3))
-    axes[0].set_yticklabels(("baseline", "smart baseline", "model"))
+    axes[0].set_yticklabels(("median as baseline", "previous hour as baseline", "model"))
 #    axes[0].set_xlabel("MAE")
-    axes[0].set_title("MAE")    
+    axes[0].set_title("mean absolute error")    
     axes[0].spines['top'].set_visible(False)
     axes[0].spines['right'].set_visible(False)
     axes[0].spines['bottom'].set_visible(False)
@@ -471,11 +469,5 @@ def evaluate_model(model, train, test, n_days):
     axes[1].legend(bbox_to_anchor=(1,1),frameon=False)
 
     plt.show()    
-    
-
-
-###########################################
-### Function: xx_model           ####
-###########################################
 
 
