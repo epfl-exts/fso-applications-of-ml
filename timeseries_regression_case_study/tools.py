@@ -332,14 +332,14 @@ def train_model(train, select_model):
         pipe_rf = Pipeline(
             [
                 ("preprocessor", preprocessor),
-                ("rf", RandomForestRegressor(min_samples_split=10, max_depth=15)),
+                ("rf", RandomForestRegressor(min_samples_split=10, max_depth=20)),
             ]
         )
         print('Preprocessing data is done!')
         print('Cross-validation is setup!')
 
         # Create grid for alpha
-        grid = {"rf__n_estimators": np.arange(1, 152, 30)}
+        grid = {"rf__n_estimators": np.arange(1, 202, 30)}
 
         # Create the grid search object
         fit_model = GridSearchCV(
