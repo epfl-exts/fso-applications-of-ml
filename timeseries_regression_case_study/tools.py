@@ -17,7 +17,11 @@ import statsmodels.api as sm
 import seaborn as sns
 import pandas as pd
 import numpy as np
+import random
 import os
+
+np.random.seed(0)
+random.seed(0)
 sns.set_context('notebook')
 
 ####################################
