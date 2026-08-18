@@ -416,20 +416,13 @@ def evaluate_model(model, train, test, n_days):
     baseline_lag = MAE(y_te, X_te["load_lag"])
     print("smart baseline MAE: {:.0f}".format(baseline_lag))
 
-    if list(model.get_params().keys())[6]=='estimator__ridge':
+    # Evaluate on the test set
+    y_pred = model.predict(X_te)
+    model_mae = MAE(y_te, y_pred)
 
-        # Evaluate on the test set
-        y_pred = model.predict(X_te)
-
-        model_mae = MAE(y_te, y_pred)
+    if "ridge" in model.estimator.named_steps:
         print("ridge regression MAE: {:.0f}".format(model_mae))
-        
     else:
-        
-        # Evaluate on the test set
-        y_pred = model.predict(X_te)
-
-        model_mae = MAE(y_te, y_pred)
         print("random forest regression MAE: {:.0f}".format(model_mae))
     
     print('\n')

@@ -1,5 +1,6 @@
 # Import necessary libraries
 import warnings
+from IPython.display import display
 warnings.filterwarnings("ignore")
 
 import sys
@@ -29,12 +30,31 @@ data_folder_path = "data"
 ###
 
 
+try:  # raised by ipykernel when no interactive frontend is attached
+    from ipykernel.kernelbase import StdinNotImplementedError
+except ImportError:  # pragma: no cover
+
+    class StdinNotImplementedError(Exception):
+        pass
+
+
+# Raised when the notebook is executed head-less (e.g. `nbconvert --execute`),
+# where input() cannot be answered. We fall back to a sensible default so the
+# notebook still renders instead of erroring out half-way through.
+_NO_STDIN = (EOFError, StdinNotImplementedError)
+
+
 def ask_for_train_size(max_length=10000):
     train_size = None
     print("Number of training samples to be used:")
     print("Please choose a number between 100 and {max}".format(max=max_length))
     while train_size is None:
-        input_value = input(" ")
+        try:
+            input_value = input(" ")
+        except _NO_STDIN:
+            train_size = min(10000, max_length)
+            print("No interactive input available - using %d." % train_size)
+            break
         try:
             # try and convert the string input to a number
             train_size = int(input_value)
@@ -56,7 +76,12 @@ def ask_for_train_contamination():
     print("Portion of training samples to be attacks:")
     print("Please choose a number between 0 and 0.5 .")
     while train_contam is None:
-        input_value = input(" ")
+        try:
+            input_value = input(" ")
+        except _NO_STDIN:
+            train_contam = 0.1
+            print("No interactive input available - using %s." % train_contam)
+            break
         try:
             # try and convert the string input to a float number
             train_contam = float(input_value)
@@ -113,7 +138,7 @@ def label_counter(labels):
     label_counter = (
         labels.attack_detail.value_counts()
         .to_frame()
-        .rename(columns={"attack_detail": "frequency"})
+        .rename(columns={"count": "frequency"})
     )
     label_counter.index.set_names(["class"], inplace=True)
     return label_counter
@@ -161,8 +186,14 @@ def create_dataset():
 
 
 def downsample_for_plot(data, labels, size):
+    # Stratifying needs at least 2 samples of every attack type. Rare types can
+    # fall below that for small training sizes, so drop back to an unstratified
+    # split rather than failing on the learner.
+    strata = labels.attack_detail
+    if strata.value_counts().min() < 2:
+        strata = None
     _, X, _, labels_plot = train_test_split(
-        data, labels, test_size=size, random_state=42, stratify=labels.attack_detail
+        data, labels, test_size=size, random_state=42, stratify=strata
     )
     return X, labels_plot
 
@@ -424,16 +455,11 @@ def detailed_evaluation(dataset, clf, colour_by_level=2, perplexity=25, max_plot
     missed = misclassified[misclassified["pred"] == 0]
     # build reporting data frame with originally present types,
     # number of misclassified per type and the percentage
-    df1 = pd.DataFrame(y_eval_df["attack_detail"].value_counts()).reset_index()
-    df2 = pd.DataFrame(missed["attack_detail"].value_counts()).reset_index()
-    df = df1.merge(df2, how="outer", on="index").rename(
-        {
-            "index": "attack_detail",
-            "attack_detail_x": "present",
-            "attack_detail_y": "missed",
-        },
-        axis=1,
+    df1 = (
+        y_eval_df["attack_detail"].value_counts().rename("present").reset_index()
     )
+    df2 = missed["attack_detail"].value_counts().rename("missed").reset_index()
+    df = df1.merge(df2, how="outer", on="attack_detail")
     df = df.fillna(0)
     df.set_index("attack_detail", inplace=True)
     # Correct missed normals from 0 to false alarms

@@ -1,0 +1,11 @@
+# Jupyter
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+
+# Build artefacts produced by 04-image-classification
+workshop-content/04-image-classification/data_32/
+workshop-content/04-image-classification/temp_img.jpg
+
+# macOS
+.DS_Store

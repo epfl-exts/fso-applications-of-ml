@@ -1,0 +1,21 @@
+name: env_ada
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12# oct-2023
+  - matplotlib=3.10# dec-2024 to present
+  - numpy=2.2# dec-2024 to may-2025
+  - pandas=2.3# jun-2025 to sep-2025
+  - seaborn=0.13.2# jan-2024 to present
+  - jupyterlab=4.4# apr-2025 to oct-2025
+  - ipython=8.37# may-2025
+  - nbconvert=7.16# feb-2024 to present
+  - nb_conda_kernels=2.5
+  - nb_black=1.0
+  - markdown=3.8# apr-2025 to jun-2025
+  - tabulate=0.9# oct-2022
+  - scikit-learn=1.8#
+  - openpyxl=3.1#
+  - xlrd=2.0#
+  - lxml-6.1#

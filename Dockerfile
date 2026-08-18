@@ -17,11 +17,19 @@ FROM ${RENKU_BASE_IMAGE}
 #    vim
 # USER ${NB_USER}
 
-# install the python dependencies
+# Install the python dependencies.
+#
+# The workshop stack (Python 3.12) is created as a SEPARATE conda env rather
+# than updated into base: the base env of this image is Python 3.9 and runs
+# JupyterLab and the renku CLI, so upgrading it in place would break them.
+# nb_conda_kernels in base makes the `aml` env selectable as a kernel.
 COPY environment.yml /tmp/
-RUN conda env update -q -f /tmp/environment.yml && \
+RUN conda env create -q -f /tmp/environment.yml && \
+    conda install -n base -y nb_conda_kernels && \
+    conda run -n aml python -c "import tensorflow as tf; \
+        tf.keras.applications.MobileNetV2(weights='imagenet', include_top=False, pooling='avg')" && \
     conda clean -y --all && \
-    conda env export -n "root"
+    conda env export -n aml
 
 # RENKU_VERSION determines the version of the renku CLI
 # that will be used in this image. To find the latest version,

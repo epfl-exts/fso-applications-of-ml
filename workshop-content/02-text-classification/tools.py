@@ -91,9 +91,8 @@ def load_data(files=False):
     df["text"] = remove_excesspace(df["text"])
 
     # Remove rows with missing values and empty rows
-    df["text"].replace("", np.nan, inplace=True)
-    df["text"].replace(" ", np.nan, inplace=True)
-    df.dropna(inplace=True)
+    df["text"] = df["text"].replace({"": np.nan, " ": np.nan})
+    df = df.dropna()
 
     # Reset index
     df.reset_index(inplace=True)
@@ -137,7 +136,7 @@ def remove_excesspace(doc):
     by single whitespace and strips leading and trailing whitespace from strings.
     """
 
-    doc = doc.str.replace("[\s]+", " ")
+    doc = doc.str.replace(r"[\s]+", " ", regex=True)
     doc = doc.str.strip()
     return doc
 
@@ -152,7 +151,7 @@ def plot_class_frequency(df):
     This function plots the number of samples per class in the data.
     """
 
-    class_counts = np.round(pd.value_counts(df.label, normalize=True), 3)
+    class_counts = np.round(df.label.value_counts(normalize=True), 3)
 
     ################
     # Spam dataset #
@@ -164,7 +163,7 @@ def plot_class_frequency(df):
     print(class_counts * 100)
     print("\n")
 
-    sns.barplot(x=class_counts.index, y=pd.value_counts(df["label"]))
+    sns.barplot(x=class_counts.index, y=df["label"].value_counts())
     plt.ylabel("Counts")
     plt.title("Sample frequency per class")
 
@@ -250,7 +249,7 @@ def get_features(df):
 
         # Count HTML Tags
         soup = BeautifulSoup(doc, "html.parser")
-        tag_counts.append(len(soup.findAll()))
+        tag_counts.append(len(soup.find_all()))
 
         # Count e-mail addresses (e.g. ilug@linux.ie)
         doc = mail_pattern.sub("EMAILHERE", doc)
@@ -366,7 +365,7 @@ def clean_corpus(df):
     url_pattern = re.compile(url_regex)
     mention_pattern = re.compile(r"@[\w.-]+")
     hashtag_pattern = re.compile(r"#[\w]+")
-    regex_chars = "[^a-zA-Z\s]*"
+    regex_chars = r"[^a-zA-Z\s]*"
     special_char_pattern = re.compile(r"([{.(-)!:\-,\=\/\<\>?}])")
 
     for doc in docs:
@@ -379,7 +378,6 @@ def clean_corpus(df):
         # Remove HTML Tags
         soup = BeautifulSoup(doc, "html.parser")
         doc = soup.get_text()
-        doc = doc.replace("[\s]+", " ")
         doc = doc.strip()
 
         # Remove e-mail addresses (e.g. ilug@linux.ie)
@@ -395,7 +393,6 @@ def clean_corpus(df):
         doc = hashtag_pattern.sub("", doc)
 
         # Remove excess whitespace
-        doc = doc.replace("[\s]+", " ")
         doc = doc.strip()
 
         # Convert to lowercase
@@ -406,14 +403,12 @@ def clean_corpus(df):
         doc = re.sub(regex_chars, "", doc)
 
         # Remove excess whitespace
-        doc = doc.replace("[\s]+", " ")
         doc = doc.strip()
 
         # Remove small words (smaller than 3 characters)
-        doc = " ".join(re.findall("[\w]{4,}", doc))
+        doc = " ".join(re.findall(r"[\w]{4,}", doc))
 
         # Removes very long words (longer than 40 characters)
-        doc = doc.replace(r"[a-zA-Z]{40,}", "")
         longp = re.compile(r"[a-zA-Z]{40,}")
         doc = longp.sub("", doc)
 
@@ -429,8 +424,8 @@ def clean_corpus(df):
     df.drop_duplicates(subset="text_cleaned", keep="first", inplace=True)
 
     # Remove empty rows
-    df["text_cleaned"].replace("", np.nan, inplace=True)
-    df.dropna(inplace=True)
+    df["text_cleaned"] = df["text_cleaned"].replace("", np.nan)
+    df = df.dropna()
 
     # Reset index
     df.reset_index(inplace=True)
@@ -612,10 +607,10 @@ def show_bag_of_words_vector():
     corpus_bow = vectorizer.fit_transform(corpus)
 
     # Get the vocabulary
-    vocab = vectorizer.get_feature_names()
+    vocab = vectorizer.get_feature_names_out()
 
     corpus_df = pd.DataFrame(
-        corpus_bow.toarray(), columns=vectorizer.get_feature_names()
+        corpus_bow.toarray(), columns=vectorizer.get_feature_names_out()
     )
     corpus_df["Text"] = corpus
     corpus_df.set_index("Text", inplace=True)
@@ -766,7 +761,7 @@ def plot_confusion_matrix(df_test, model):
 
 def visualize_coefficients(model, n_top_features=25):
 
-    feature_names = model.named_steps["vectorizer"].get_feature_names()
+    feature_names = model.named_steps["vectorizer"].get_feature_names_out()
     coefficients = model.named_steps["lr"].coef_
 
     """Visualize coefficients of a linear model.
@@ -876,7 +871,7 @@ def error_analysis(df_test, model, doc_nbr, n_top=25):
     class_dict = dict(zip(["0", "1"], ["Non-spam", "Spam"]))
 
     # Get vocabulary and model coefficients
-    feature_names = model.named_steps["vectorizer"].get_feature_names()
+    feature_names = model.named_steps["vectorizer"].get_feature_names_out()
     coefficients = model.named_steps["lr"].coef_
     coefficients = coefficients.squeeze()
 
