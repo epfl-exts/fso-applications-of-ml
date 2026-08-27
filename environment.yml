@@ -13,25 +13,25 @@ dependencies:
   - python=3.12
   - numpy=2.2
   - pandas=2.3
-  - scipy
+  - scipy=1.18
   - scikit-learn=1.8
-  - statsmodels          # 01-timeseries-regression: sm.graphics.tsa.plot_acf
+  - statsmodels=0.14.6          # 01-timeseries-regression: sm.graphics.tsa.plot_acf
   # --- plotting ---------------------------------------------------------
   - matplotlib=3.10
   - seaborn=0.13.2
   # --- images (04-image-classification) ---------------------------------
-  - imageio
-  - pillow
-  - requests             # predict_new_image() fetches an image by URL
-  - tensorflow=2.18=cpu*  # MobileNetV2 feature extractor + Keras 3 layers
+  - imageio=2.37
+  - pillow=12.3
+  - requests=2.34.2             # predict_new_image() fetches an image by URL
+  - tensorflow=2.18=cpu*        # MobileNetV2 feature extractor + Keras 3 layers
   # --- text (02-text-classification) ------------------------------------
-  - nltk                 # WordPunctTokenizer / Text only; no corpora needed
-  - beautifulsoup4       # uses the stdlib html.parser, no lxml required
+  - nltk=3.10.3                 # WordPunctTokenizer / Text only; no corpora needed
+  - beautifulsoup4=4.15         # uses the stdlib html.parser, no lxml required
   # --- notebook environment ---------------------------------------------
   - jupyterlab=4.4
   - ipython=8.37
-  - ipykernel
-  - ipywidgets           # required by tqdm.notebook
+  - ipykernel=7.3              
+  - ipywidgets=8.1.9            # required by tqdm.notebook
   - nbconvert=7.16
   - nb_conda_kernels=2.5
-  - tqdm                 # 04-image-classification progress bars
+  - tqdm                        # 04-image-classification progress bars
