@@ -143,7 +143,46 @@ def label_counter(labels):
     label_counter.index.set_names(["class"], inplace=True)
     return label_counter
 
-def create_dataset():
+def create_dataset(size, ratio):
+    ### data_folder_path="data"
+    # import data
+    data_full = pd.read_csv(os.path.join(data_folder_path, "data_AMLD.csv"))
+    labels_full = pd.read_csv(os.path.join(data_folder_path, "labels_AMLD.csv"))
+
+    # get parameters from user
+    training_samples = size
+    training_contamination = ratio
+    # generate training data
+    data_train, labels_train = generate_training_data(
+        data_full,
+        labels_full,
+        training_samples=training_samples,
+        training_contamination=training_contamination,
+    )
+
+    n_attack = np.ceil(training_samples * training_contamination).astype("int")
+
+    # import test datasets
+    # data_10=pd.read_csv(os.path.join(data_folder_path, "data_test_10K.csv"))
+    # labels_10=pd.read_csv(os.path.join(data_folder_path, "labels_test_10K.csv"))
+    data_1 = pd.read_csv(os.path.join(data_folder_path, "data_test_1K.csv"))
+    labels_1 = pd.read_csv(os.path.join(data_folder_path, "labels_test_1K.csv"))
+    # bundle datasets in a dictionary
+    dataset = {
+        "data_train": data_train.astype(np.float64),
+        "labels_train": labels_train,
+        # "data_test10": data_10,
+        # "labels_test10": labels_10,
+        "data_test1": data_1.astype(np.float64),
+        "labels_test1": labels_1,
+        # default choice with_PCA=False, so test set is default test set
+        "data_test1_PCA": data_1,
+    }
+
+    print(f"Your dataset has been created.\nIt contains {size} samples, of which {n_attack} are malicious attacks.\nThe rest is normal traffic.")
+    return dataset
+
+def create_dataset_old():
     ### data_folder_path="data"
     # import data
     data_full = pd.read_csv(os.path.join(data_folder_path, "data_AMLD.csv"))
