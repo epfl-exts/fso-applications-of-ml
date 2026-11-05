@@ -27,18 +27,67 @@ from random import randrange
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
+
+####################################
+### font size.                 ####
+####################################
+
+label_specs = {"fontsize": 9}
+title_specs = {"fontsize": 12, "fontweight": "bold"}
+
+
+####################################
+### Function: get_email_content ####
+####################################
+
+
+def get_email_content(email_path):
+    """
+    This function uses the email library to extract text from mails
+    """
+
+    file = open(email_path, encoding="ISO-8859-1")
+    try:
+        msg = email.message_from_file(file)
+        for part in msg.walk():
+            if (part.get_content_type() == "text/plain") | (
+                part.get_content_type() == "text/html"
+            ):
+                return part.get_payload()
+    except Exception as e:
+        print(e)
+
+
+####################################
+### Function: remove_excesspace ####
+####################################
+
+
+def remove_excesspace(doc):
+    """
+    This function replaces multiple whitespace, new lines and tab characters
+    by single whitespace and strips leading and trailing whitespace from strings.
+    """
+
+    doc = doc.str.replace("[\s]+", " ")
+    doc = doc.str.strip()
+    return doc
 
 
 ####################################
 ### Function: load_data         ####
 ####################################
 
-def load_data(files=False):
 
+def load_data(files=False):
     """
     This function performs the following steps:
     - Loads the data.
@@ -79,20 +128,29 @@ def load_data(files=False):
     # Store text, label and filename in DataFrame
     if files:
         df = pd.DataFrame.from_dict(
-            {"label": labels, "text": docs, "filename": filenames}
+            {"spam_label": labels, "text": docs, "filename": filenames}
         )
     else:
-        df = pd.DataFrame.from_dict({"label": labels, "text": docs})
+        df = pd.DataFrame.from_dict({"spam_label": labels, "text": docs})
+
+    # Check duplicates in text column - to be removed
+    duplicates = df[df.duplicated(subset="text", keep="first")]
+    print("Cleaning duplicates")
+    print("Number of duplicates found", duplicates.shape[0])
 
     # Remove duplicated rows from DataFrame
+    print("Data with duplicates", df.shape[0])
     df.drop_duplicates(subset="text", keep="first", inplace=True)
+    print("After duplicates are removed", df.shape[0])
 
     # Remove excess whitespace, new lines and tabs
     df["text"] = remove_excesspace(df["text"])
 
     # Remove rows with missing values and empty rows
-    df["text"] = df["text"].replace({"": np.nan, " ": np.nan})
-    df = df.dropna()
+    df["text"].replace("", np.nan, inplace=True)
+    df["text"].replace(" ", np.nan, inplace=True)
+    df.dropna(inplace=True)
+    print("After removing empty text", df.shape[0])
 
     # Reset index
     df.reset_index(inplace=True)
@@ -100,80 +158,17 @@ def load_data(files=False):
 
     print("Data loaded.")
     print("Data size:", df.shape)
+    print("Columns names:", ", ".join(df.columns))
 
     return df
 
 
-####################################
-### Function: get_email_content ####
-####################################
-
-def get_email_content(email_path):
-
-    """
-    This function uses the email library to extract text from mails
-    """
-
-    file = open(email_path, encoding="ISO-8859-1")
-    try:
-        msg = email.message_from_file(file)
-        for part in msg.walk():
-            if (part.get_content_type() == "text/plain") | (
-                part.get_content_type() == "text/html"
-            ):
-                return part.get_payload()
-    except Exception as e:
-        print(e)
-
-
-####################################
-### Function: remove_excesspace ####
-####################################
-
-def remove_excesspace(doc):
-    """
-    This function replaces multiple whitespace, new lines and tab characters
-    by single whitespace and strips leading and trailing whitespace from strings.
-    """
-
-    doc = doc.str.replace(r"[\s]+", " ", regex=True)
-    doc = doc.str.strip()
-    return doc
-
-
-###################################################
-### Function:   plot_class_frequency           ####
-###################################################
-
-def plot_class_frequency(df):
-
-    """
-    This function plots the number of samples per class in the data.
-    """
-
-    class_counts = np.round(df.label.value_counts(normalize=True), 3)
-
-    ################
-    # Spam dataset #
-    ################
-
-    class_counts.index = ["non-spam", "spam"]
-
-    print("Samples per class (%):")
-    print(class_counts * 100)
-    print("\n")
-
-    sns.barplot(x=class_counts.index, y=df["label"].value_counts())
-    plt.ylabel("Counts")
-    plt.title("Sample frequency per class")
-
-
 #########################################
-### Function: get_features           ####
+### Function: get_numeric_features   ####
 #########################################
 
-def get_features(df):
 
+def get_numeric_features(df, with_labels=False):
     """
     This function takes a pd.DataFrame as input and performs the following tasks:
     - counts characters, words, unique words, punctuation marks, uppercase & lowercase words,
@@ -183,10 +178,12 @@ def get_features(df):
 
     Outputs:
     - a pd.DataFrame with all counts.
-    - plots the distribution of features per class.
+    - with labels
     """
 
     docs = df["text"]
+    spam_labels = df["spam_label"]
+    print("Number of samples and columns of input:", df.shape)
 
     # Create empty lists for storing counts
     digit_counts = []
@@ -249,7 +246,7 @@ def get_features(df):
 
         # Count HTML Tags
         soup = BeautifulSoup(doc, "html.parser")
-        tag_counts.append(len(soup.find_all()))
+        tag_counts.append(len(soup.findAll()))
 
         # Count e-mail addresses (e.g. ilug@linux.ie)
         doc = mail_pattern.sub("EMAILHERE", doc)
@@ -268,7 +265,7 @@ def get_features(df):
         hashtag_counts.append(doc.count("HASHTAGHERE"))
 
     # Store features in a DataFrame
-    features = pd.DataFrame(
+    num_features_df = pd.DataFrame(
         list(
             zip(
                 mail_counts,
@@ -303,45 +300,21 @@ def get_features(df):
         ],
     )
 
-    features_df = pd.concat([df["label"], features], axis=1)
+    if with_labels:
+        # Add labels to DataFrame
+        num_features_df = pd.concat([num_features_df, spam_labels], axis=1)
 
-    # Plot results
-    # ============
-    cols = features_df.columns[1:]
+    print("Numeric features extracted")
+    print("Data size:", num_features_df.shape)
+    print("Columns names:", ", ".join(num_features_df.columns))
 
-    fig, axes = plt.subplots(nrows=5, ncols=3, figsize=(16, 4 * 5))
-
-    for col, ax in zip(cols, axes.ravel()):
-        ax.hist(
-            np.log1p(features_df[features_df["label"] == 0][col]),
-            bins=20,
-            density=True,
-            label="Non-spam",
-            alpha=0.3,
-            edgecolor="grey",
-        )
-        ax.hist(
-            np.log1p(features_df[features_df["label"] == 1][col]),
-            bins=20,
-            density=True,
-            label="Spam",
-            alpha=0.3,
-            edgecolor="grey",
-        )
-        ax.legend(fontsize=12)
-        ax.set_ylabel("Normalized Frequency")
-        ax.set_xlabel("Number of " + col.lower()[:-7] + "s (log scale)")
-
-    axes[4, 1].axis("off")
-    axes[4, 2].axis("off")
-    plt.tight_layout()
-
-    return features_df
+    return num_features_df
 
 
 #########################################
 ### Function:   clean_corpus         ####
 #########################################
+
 
 def clean_corpus(df):
 
@@ -365,7 +338,7 @@ def clean_corpus(df):
     url_pattern = re.compile(url_regex)
     mention_pattern = re.compile(r"@[\w.-]+")
     hashtag_pattern = re.compile(r"#[\w]+")
-    regex_chars = r"[^a-zA-Z\s]*"
+    regex_chars = "[^a-zA-Z\s]*"
     special_char_pattern = re.compile(r"([{.(-)!:\-,\=\/\<\>?}])")
 
     for doc in docs:
@@ -378,6 +351,7 @@ def clean_corpus(df):
         # Remove HTML Tags
         soup = BeautifulSoup(doc, "html.parser")
         doc = soup.get_text()
+        doc = doc.replace("[\s]+", " ")
         doc = doc.strip()
 
         # Remove e-mail addresses (e.g. ilug@linux.ie)
@@ -393,6 +367,7 @@ def clean_corpus(df):
         doc = hashtag_pattern.sub("", doc)
 
         # Remove excess whitespace
+        doc = doc.replace("[\s]+", " ")
         doc = doc.strip()
 
         # Convert to lowercase
@@ -403,12 +378,14 @@ def clean_corpus(df):
         doc = re.sub(regex_chars, "", doc)
 
         # Remove excess whitespace
+        doc = doc.replace("[\s]+", " ")
         doc = doc.strip()
 
         # Remove small words (smaller than 3 characters)
-        doc = " ".join(re.findall(r"[\w]{4,}", doc))
+        doc = " ".join(re.findall("[\w]{4,}", doc))
 
         # Removes very long words (longer than 40 characters)
+        doc = doc.replace(r"[a-zA-Z]{40,}", "")
         longp = re.compile(r"[a-zA-Z]{40,}")
         doc = longp.sub("", doc)
 
@@ -420,17 +397,22 @@ def clean_corpus(df):
     # Store clean corpus in a new column
     df["text_cleaned"] = clean_corpus
 
+    print("Number of samples:", df.shape[0])
+
     # Remove duplicated rows
     df.drop_duplicates(subset="text_cleaned", keep="first", inplace=True)
+    print("Number of samples without duplicates:", df.shape[0])
 
     # Remove empty rows
-    df["text_cleaned"] = df["text_cleaned"].replace("", np.nan)
-    df = df.dropna()
+    df["text_cleaned"].replace("", np.nan, inplace=True)
+    df.dropna(inplace=True)
+    print("Number of samples without empty text:", df.shape[0])
 
     # Reset index
     df.reset_index(inplace=True)
     df.drop("index", axis=1, inplace=True)
 
+    print("Data cleaned")
     return df
 
 
@@ -438,8 +420,8 @@ def clean_corpus(df):
 ### Function:  show_clean_text       ####
 #########################################
 
-def show_clean_text(df):
 
+def show_clean_text(df):
     """
     This function takes a document number (doc_nbr) and
     outputs:
@@ -471,9 +453,324 @@ def show_clean_text(df):
     print("Cleaned document:\n\n{}".format(clean_text))
 
 
+#############################################
+### Function:   store_labels               ####
+#############################################
+
+
+def store_labels(df):
+    """
+    This function
+    - extracts the labels from the data frame
+    - stores them in a csv file
+    - returns them
+    To avoid conflict with "label" word column the column has been named "spam_label"
+    Outputs:
+    - DataFrame of labels in the column "spam_label"
+    """
+    # Create data frame with labels in a column named "spam_label"
+    labels_df = df[["spam_label"]]
+
+    # Save to csv
+    labels_df.to_csv("data/labels.csv", index=False)
+
+
+#############################################
+### Function:   load_labels               ####
+#############################################
+
+
+def load_labels():
+    """
+    Load labels from "data/labels.csv"
+    """
+
+    # Check if file exists
+    if not os.path.exists("data/labels.csv"):
+        print("Labels file not found. Please run store_labels() first.")
+        return None
+    else:
+        # Load labels from csv
+        labels_df = pd.read_csv("data/labels.csv")
+        print(f"{labels_df.shape[0]} labels loaded")
+        print("Labels found:", labels_df["spam_label"].unique())
+        return labels_df
+
+
+#############################################
+### Function:   get_text_features        ####
+#############################################
+
+
+def get_text_features(df, vectorizer="count", with_labels=False):
+    """
+    This function takes a pd.DataFrame as input and performs the following tasks:
+    - clean text column
+    - apply count-vectorizer or otherwise tfidf-vectorizer
+    Outputs:
+    - DataFrame with all count above fixed limit
+    - without labels (labels are stored separately in a csv file)
+    """
+
+    # Clean text
+    df = clean_corpus(df)
+
+    # Extract features
+    ## Note: Params below were optimized for maximizing f1-score for validation splits (cv = 5)
+    if vectorizer == "count":
+        # CountVectorizer
+        vectorizer = CountVectorizer(
+            analyzer="word",  # default
+            ngram_range=(1, 1),  # default
+            token_pattern="(?u)\\b\\w+\\b",  # default
+            min_df=5,
+            max_features=20000,
+            stop_words=list(ENGLISH_STOP_WORDS),
+        )
+    else:
+        # TfidfVectorizer
+        vectorizer = TfidfVectorizer(
+            analyzer="word",  # default
+            ngram_range=(1, 1),  # default
+            token_pattern="(?u)\\b\\w+\\b",  # default
+            min_df=5,
+            max_features=20000,
+            stop_words=list(ENGLISH_STOP_WORDS),
+        )
+
+    # Transform corpus
+    corpus_bow = vectorizer.fit_transform(df["text_cleaned"])
+
+    # Get the vocabulary
+    vocab = vectorizer.get_feature_names_out()
+
+    text_features_df = pd.DataFrame(
+        corpus_bow.toarray(), columns=vectorizer.get_feature_names_out()
+    )
+
+    return text_features_df
+
+
+#############################################
+### Function:   get_all_features        ####
+#############################################
+
+
+def get_all_features(df, vectorizer="count", with_labels=False):
+    """
+    This function takes a pd.DataFrame as input and performs the following tasks:
+    - get numeric features
+    - get text features
+    - merge the two frames
+    Outputs:
+    - DataFrame with all features
+    - with labels
+    """
+
+    # Get numeric features
+    num_features_df = get_numeric_features(df, with_labels=False)
+
+    # Get text features
+    text_features_df = get_text_features(df, vectorizer=vectorizer, with_labels=False)
+
+    # Merge the two frames
+    if with_labels:
+        all_features_df = pd.merge(
+            num_features_df.drop("spam_label", axis=1),
+            text_features_df,
+            left_index=True,
+            right_index=True,
+        )
+    else:
+        # Merge the two frames
+        # without labels
+        all_features_df = pd.merge(
+            num_features_df, text_features_df, left_index=True, right_index=True
+        )
+
+    return all_features_df
+
+
+###################################################
+### Function:   create_all_feature_spaces      ####
+###################################################
+
+
+def create_all_feature_spaces(df, vectorizer="count"):
+    """
+    This function takes a pd.DataFrame as input and performs the following tasks:
+    - get numeric features
+    - get text features
+    - merge the two frames
+    Outputs:
+    - DataFrame with all features
+    - with labels
+    """
+
+    # Get numeric features
+    num_features_df = get_numeric_features(df)
+    # Save to csv
+    num_features_df.to_csv("data/num_features.csv", index=False)
+    print("Numeric features saved to data/num_features.csv")
+
+    # Get text features
+    text_features_df = get_text_features(df, vectorizer=vectorizer)
+    # Save to csv
+    text_features_df.to_csv("data/text_features.csv", index=False)
+    print("Text features saved to data/text_features.csv")
+
+    # Merge the two frames
+    all_features_df = pd.merge(
+        num_features_df, text_features_df, left_index=True, right_index=True
+    )
+    # Save to csv
+    all_features_df.to_csv("data/all_features.csv", index=False)
+    print("All features saved to data/all_features.csv")
+
+
+###################################################
+### Function:   load_all_feature_spaces      ####
+###################################################
+
+
+def load_all_feature_spaces(with_labels=False):
+    """
+    This function loads the previously generated features spaces:
+    If with_labels=False then drop "spam_label" column
+    Outputs:
+    - num_features
+    - text_features
+    - all_features
+    - embeddings
+    """
+
+    # Load numeric features
+    num_features_df = pd.read_csv("data/num_features.csv")
+    print("Numeric features loaded")
+    print(f"{num_features_df.shape[0]} rows, {num_features_df.shape[1]} columns")
+    # Load text features
+    text_features_df = pd.read_csv("data/text_features.csv")
+    print("Text features loaded")
+    print(f"{text_features_df.shape[0]} rows, {text_features_df.shape[1]} columns")
+    # Load all features
+    all_features_df = pd.read_csv("data/all_features.csv")
+    print("All features loaded")
+    print(f"{all_features_df.shape[0]} rows, {all_features_df.shape[1]} columns")
+    # Load email embeddings
+    embeddings_df = pd.read_csv("data/email_embeddings.csv")
+    print("Email embeddings loaded")
+    print(f"{embeddings_df.shape[0]} rows, {embeddings_df.shape[1]} columns")
+
+    if with_labels == False:
+        num_features_df.drop("spam_label", axis=1, inplace=True)
+        text_features_df.drop("spam_label", axis=1, inplace=True)
+        all_features_df.drop("spam_label", axis=1, inplace=True)
+        embeddings_df.drop("spam_label", axis=1, inplace=True)
+        print("Data loaded without labels")
+    else:
+        print("Data includes labels in the column 'spam_label'")
+
+    return num_features_df, text_features_df, all_features_df, embeddings_df
+
+
+###################################################
+### Function:   plot_class_frequency           ####
+###################################################
+
+
+def plot_class_frequency(df):
+    """
+    This function plots the number of samples per class in the data.
+    """
+
+    class_counts = np.round(pd.value_counts(df["spam_label"], normalize=True), 3)
+
+    ################
+    # Spam dataset #
+    ################
+
+    class_counts.index = ["non-spam", "spam"]
+
+    print("Samples per class (%):")
+    print(class_counts * 100)
+    print("\n")
+
+    sns.barplot(x=class_counts.index, y=pd.value_counts(df["spam_label"]))
+    plt.ylabel("Counts")
+    plt.title("Sample frequency per class")
+
+
+#############################################
+### Function:   plot_numeric_features    ####
+#############################################
+
+
+def plot_numeric_features(df, with_labels=False):
+    """
+    This function uses get_numeric_features() to extract:
+    - counts characters, words, unique words, punctuation marks, uppercase & lowercase words,
+      digits and alphabetic chars
+    - removes 'URL:' and 'mailto:' strings from text
+    - counts the number of HTML tags, e-mail addresses, URLs and twitter usernames.
+
+    Outputs:
+    - plots the distribution of features per class if with_labels=True (default).
+    - no return value.
+    """
+
+    num_features_df = get_numeric_features(df, with_labels=with_labels)
+    ### old setting
+    ### num_features_df = pd.concat([num_features, df["spam_label"]], axis=1)
+
+    # Plot results
+    # ============
+    cols = num_features_df.columns[:-1]
+
+    fig, axes = plt.subplots(nrows=5, ncols=3, figsize=(16, 4 * 5))
+
+    for col, ax in zip(cols, axes.ravel()):
+        if with_labels:
+            ax.hist(
+                np.log1p(num_features_df[num_features_df["spam_label"] == 0][col]),
+                bins=20,
+                density=True,
+                label="Non-spam",
+                alpha=0.3,
+                edgecolor="grey",
+            )
+            ax.hist(
+                np.log1p(num_features_df[num_features_df["spam_label"] == 1][col]),
+                bins=20,
+                density=True,
+                label="Spam",
+                alpha=0.3,
+                edgecolor="grey",
+            )
+        else:
+            ax.hist(
+                np.log1p(num_features_df[col]),
+                bins=20,
+                density=True,
+                label="All",
+                # alpha=0.3,
+                edgecolor="grey",
+            )
+
+        ax.legend(fontsize=12)
+        ax.set_ylabel("Normalized Frequency", fontsize=14)
+        ax.set_xlabel("Number of " + col.lower()[:-7] + "s (log scale)", fontsize=14)
+
+    axes[4, 1].axis("off")
+    axes[4, 2].axis("off")
+    plt.tight_layout()
+
+    # return num_features_df
+
+
 ####################################
 ### Function:   Convert         ####
 ####################################
+
 
 def Convert(tup, di):
     """
@@ -484,12 +781,12 @@ def Convert(tup, di):
     return di
 
 
-###########################################
-### Function: plot_most_common_words   ####
-###########################################
+###############################################
+### Function: plot_most_common_words_old   ####
+###############################################
 
-def plot_most_common_words(df, N):
 
+def plot_most_common_words_old(df, N):
     """
     This function computes the N most common words in
     hams and spams and plots the results in a common
@@ -499,8 +796,8 @@ def plot_most_common_words(df, N):
     # Text data needs to be converted into a nltk.Text() object to be able to use it with nltk tools
 
     # Join "cleaned text" in single strings
-    corpus_0 = " ".join([text for text in df[df["label"] == 0]["text_cleaned"]])
-    corpus_1 = " ".join([text for text in df[df["label"] == 1]["text_cleaned"]])
+    corpus_0 = " ".join([text for text in df[df["spam_label"] == 0]["text_cleaned"]])
+    corpus_1 = " ".join([text for text in df[df["spam_label"] == 1]["text_cleaned"]])
 
     # nltk.Text() expects tokenized text
     # Create an instance of WordPunctTokenizer
@@ -539,30 +836,224 @@ def plot_most_common_words(df, N):
 
     # Plot most common words in hams and spams
     # -----------------------------------------
-    plt.figure(figsize=(18, 6))
+    plt.figure(figsize=(8, 8))
 
-    plt.bar(
-        x=df.Word, height=df.ham_counts, edgecolor="black", label="Non-spam", alpha=0.3
+    plt.barh(
+        y=df.Word, width=df.ham_counts, edgecolor="black", label="Non-spam", alpha=0.3
     )
-    plt.bar(
-        x=df.Word, height=df.spam_counts, edgecolor="black", label="Spam", alpha=0.3
+    plt.barh(
+        y=df.Word, width=df.spam_counts, edgecolor="black", label="Spam", alpha=0.3
     )
-    plt.ylabel("Word counts")
-    plt.title("Top " + str(N) + " most frequent words in spam and non-spam")
-    plt.legend()
-    plt.xticks(rotation=90)
+    plt.xlabel("Word counts", **label_specs)
+    plt.title(
+        "Top " + str(N) + " most frequent words in spam and non-spam", **title_specs
+    )
+    # change font size
+    plt.legend(**label_specs)
+    plt.xticks(**label_specs)
+    plt.yticks(**label_specs)
+
+
+###########################################
+### Function: plot_most_common_words   ####
+###########################################
+
+
+def plot_most_common_words(df, N, per_1000=False, with_labels=True):
+    """
+    This function computes the N most common words in
+    hams and spams and plots the results in a common
+    histogram.
+    """
+
+    if with_labels == True:
+        # Join documents in single strings
+        corpus_0 = " ".join(df[df["spam_label"] == 0]["text_cleaned"])
+        corpus_1 = " ".join(df[df["spam_label"] == 1]["text_cleaned"])
+        tokenizer = nltk.WordPunctTokenizer()
+
+        tokens_0 = tokenizer.tokenize(corpus_0)
+        tokens_1 = tokenizer.tokenize(corpus_1)
+
+        freq_0 = Counter(tokens_0)
+        freq_1 = Counter(tokens_1)
+
+        # Get top N words from each class
+        top_words_0 = [word for word, _ in freq_0.most_common(N)]
+        top_words_1 = [word for word, _ in freq_1.most_common(N)]
+        print(f"Top {N} words in class 0:")
+        print(top_words_0)
+        print(f"Top {N} words in class 1:")
+        print(top_words_1)
+
+        # Combine top words from both classes
+        common_list = list(set(top_words_0 + top_words_1))
+
+        # Get frequencies for all common words in both classes
+        counts_0 = [freq_0.get(word, 0) for word in common_list]
+        counts_1 = [freq_1.get(word, 0) for word in common_list]
+
+        if per_1000:
+            # Normalize counts to per 1000 emails
+            counts_0 = 1000 * (counts_0 / (df["spam_label"] == 0).sum())
+            counts_1 = 1000 * (counts_1 / (df["spam_label"] == 1).sum())
+
+        df_plot = pd.DataFrame(
+            list(zip(common_list, counts_0, counts_1)),
+            columns=["Word", "ham_counts", "spam_counts"],
+        ).sort_values(by="ham_counts", ascending=False)
+
+        # Plot
+        plt.figure(figsize=(8, 8))
+        plt.barh(
+            y=df_plot.Word,
+            width=df_plot.ham_counts,
+            edgecolor="black",
+            label="Non-spam",
+            alpha=0.3,
+        )
+        plt.barh(
+            y=df_plot.Word,
+            width=df_plot.spam_counts,
+            edgecolor="black",
+            label="Spam",
+            alpha=0.3,
+        )
+        if per_1000:
+            plt.xlabel("Word counts per 1000 emails", **label_specs)
+        else:
+            plt.xlabel("Word counts", **label_specs)
+        plt.title(
+            f"{N} most frequent words in spam and non-spam combined", **title_specs
+        )
+        plt.legend(**label_specs)
+        plt.xticks(**label_specs)
+        plt.yticks(**label_specs)
+    else:
+        # Join documents in single strings
+        corpus = " ".join(df["text_cleaned"])
+        tokenizer = nltk.WordPunctTokenizer()
+
+        tokens = tokenizer.tokenize(corpus)
+        freq = Counter(tokens)
+
+        # Get top N words from each class
+        top_words = [word for word, _ in freq.most_common(N)]
+        print(f"Top {N} words in all classes:")
+        print(top_words)
+
+        # Get the counts of the top words
+        counts = [freq.get(word, 0) for word in top_words]
+        # Normalize counts to per 1000 emails
+        if per_1000:
+            counts = 1000 * (counts / df.shape[0])
+        # Create a DataFrame for plotting
+        df_plot = pd.DataFrame(
+            list(zip(top_words, counts)), columns=["Word", "Counts"]
+        ).sort_values(by="Counts", ascending=False)
+        # Plot
+        plt.figure(figsize=(8, 8))
+        plt.barh(
+            y=df_plot.Word,
+            width=df_plot.Counts,
+            edgecolor="black",
+            label="All emails",
+            alpha=0.3,
+        )
+        if per_1000:
+            plt.xlabel("Word counts per 1000 emails", **label_specs)
+        else:
+            plt.xlabel("Word counts", **label_specs)
+            plt.xticks(**label_specs)
+            plt.yticks(**label_specs)
+        plt.title(f"{N} most frequent words", **title_specs)
+
+
+###########################################
+### Function: plot_most_common_tokens   ####
+###########################################
+
+
+def plot_most_common_tokens(df, N, per_1000=False):
+    """
+    This function computes the N most common words in
+    hams and spams and plots the results in a common
+    histogram.
+    """
+
+    tokenizer = nltk.WordPunctTokenizer()
+
+    corpus_0 = " ".join(df[df["spam_label"] == 0]["text_cleaned"])
+    corpus_1 = " ".join(df[df["spam_label"] == 1]["text_cleaned"])
+
+    tokens_0 = tokenizer.tokenize(corpus_0)
+    tokens_1 = tokenizer.tokenize(corpus_1)
+
+    freq_0 = Counter(tokens_0)
+    freq_1 = Counter(tokens_1)
+
+    # Get top N words from each class
+    top_words_0 = [word for word, _ in freq_0.most_common(N)]
+    top_words_1 = [word for word, _ in freq_1.most_common(N)]
+    print(f"Top {N} words in class 0:")
+    print(top_words_0)
+    print(f"Top {N} words in class 1:")
+    print(top_words_1)
+
+    # Combine top words from both classes
+    common_list = list(set(top_words_0 + top_words_1))
+
+    # Get frequencies for all common words in both classes
+    counts_0 = [freq_0.get(word, 0) for word in common_list]
+    counts_1 = [freq_1.get(word, 0) for word in common_list]
+
+    if per_1000:
+        # Normalize counts to per 1000 emails
+        counts_0 = 1000 * (counts_0 / (df["spam_label"] == 0).sum())
+        counts_1 = 1000 * (counts_1 / (df["spam_label"] == 1).sum())
+
+    df_plot = pd.DataFrame(
+        list(zip(common_list, counts_0, counts_1)),
+        columns=["Word", "ham_counts", "spam_counts"],
+    ).sort_values(by="ham_counts", ascending=False)
+
+    # Plot
+    plt.figure(figsize=(8, 8))
+    plt.barh(
+        y=df_plot.Word,
+        width=df_plot.ham_counts,
+        edgecolor="black",
+        label="Non-spam",
+        alpha=0.3,
+    )
+    plt.barh(
+        y=df_plot.Word,
+        width=df_plot.spam_counts,
+        edgecolor="black",
+        label="Spam",
+        alpha=0.3,
+    )
+    if per_1000:
+        plt.xlabel("Word counts per 1000 emails", **label_specs)
+    else:
+        plt.xlabel("Word counts", **label_specs)
+    plt.title(f"{N} most frequent words in spam and non-spam combined", **title_specs)
+    plt.legend(**label_specs)
+    plt.xticks(**label_specs)
+    plt.yticks(**label_specs)
 
 
 ###########################################
 ### Function: corpus_vocabulary        ####
 ###########################################
 
+
 def corpus_vocabulary(df):
 
     # Join documents in single strings
     corpus = " ".join([text for text in df["text_cleaned"]])
-    corpus_0 = " ".join([text for text in df[df["label"] == 0]["text_cleaned"]])
-    corpus_1 = " ".join([text for text in df[df["label"] == 1]["text_cleaned"]])
+    corpus_0 = " ".join([text for text in df[df["spam_label"] == 0]["text_cleaned"]])
+    corpus_1 = " ".join([text for text in df[df["spam_label"] == 1]["text_cleaned"]])
 
     # nltk.Text() expects tokenized text
     # Create an instance of WordPunctTokenizer
@@ -585,6 +1076,7 @@ def corpus_vocabulary(df):
 ### Function: show_bag_of_words_vector ####
 ###########################################
 
+
 def show_bag_of_words_vector():
     """
     This functio extracts BoW features for a
@@ -600,7 +1092,7 @@ def show_bag_of_words_vector():
     ]
 
     vectorizer = CountVectorizer(
-        analyzer="word", ngram_range=(1, 1), token_pattern=u"(?u)\\b\\w+\\b", min_df=1
+        analyzer="word", ngram_range=(1, 1), token_pattern="(?u)\\b\\w+\\b", min_df=1
     )
 
     # Transform corpus
@@ -618,27 +1110,45 @@ def show_bag_of_words_vector():
 
 
 ###########################################
-### Function: train_test_split_        ####
+### Function: train_test_split_old     ####
 ###########################################
 
-def train_test_split_(df):
 
+def train_test_split_old(df):
     """
     This function performs train/test splitting
     """
 
-    return train_test_split(df, test_size=0.3, stratify=df["label"], random_state=0)
+    return train_test_split(
+        df, test_size=0.3, stratify=df["spam_label"], random_state=0
+    )
 
 
 ###########################################
-### Function: fit_model                ####
+### Function: train_test_split_        ####
 ###########################################
 
-def fit_model(df_train):
 
+def train_test_split_(df):
+    """
+    This function performs train/test splitting
+    Note: The label column was named "spam_label" to avoid conflict with the word column
+    "label" in the text features.
+    """
+
+    return train_test_split(
+        df, test_size=0.3, stratify=df["spam_label"], random_state=0
+    )
+
+
+###########################################
+### Function: fit_model - old version  ####
+###########################################
+
+
+def fit_model_old(df_train):
     """
     This function performs the following:
-    - extracts BoW features from train data
     - fits a LogReg model.
 
     **Note**: The model parameters were optimized with GridSearchCV
@@ -650,7 +1160,7 @@ def fit_model(df_train):
     X_train = df_train["text_cleaned"].values
 
     # Train set: Labels
-    y_train = df_train["label"].values
+    y_train = df_train["spam_label"].values
 
     # Define pipeline
     model = Pipeline(
@@ -671,7 +1181,7 @@ def fit_model(df_train):
     optimized_params = {
         "lr__C": 0.1,
         "vectorizer__max_features": 20000,
-        "vectorizer__min_df": 2,
+        "vectorizer__min_df": 5,  # was 2, but changed for statistical stability
         "vectorizer__ngram_range": (1, 1),
     }
 
@@ -689,19 +1199,67 @@ def fit_model(df_train):
 
 
 ###########################################
+### Function: fit_model - new version  ####
+###########################################
+
+
+def fit_model(df_train, C=1):
+    """
+    This function performs the following:
+    - fits a LogReg model.
+
+    Note the label column was named "spam_label" to avoid conflict with the word column
+    "label" in the text features.
+    """
+
+    # Train set: features
+    X_train = df_train.drop(columns=["spam_label"]).values
+
+    # Train set: Labels
+    y_train = df_train["spam_label"].values
+
+    # Define model
+    model = LogisticRegression(
+        solver="liblinear", class_weight="balanced", random_state=None, C=C
+    )
+
+    # Fit model
+    model.fit(X_train, y_train)
+
+    return model
+
+
+###########################################
 ### Function: plot_confusion_matrix   ####
 ###########################################
+
 
 def plot_confusion_matrix(df_test, model):
     """
     This function plots the confusion matrix.
+    We need to check whether "spam_level" is used as target
+    or whether original df with "label" as target is being used
     """
 
-    # True labels
-    y_true = df_test["label"].values
+    if "spam_label" in df_test.columns:
+        # Test set: features
+        X_test = df_test.drop(columns=["spam_label"]).values
 
-    # Compute predictions on test set
-    y_pred = model.predict(df_test["text_cleaned"].values)
+        # True labels
+        y_true = df_test["spam_label"].values
+
+        # Compute predictions on test set
+        y_pred = model.predict(X_test)
+
+    else:
+        # Test set: features
+        X_test = df_test["text_cleaned"].values
+
+        # True labels
+        y_true = df_test["spam_label"].values
+
+        # Compute predictions on test set
+        y_pred = model.predict(X_test)
 
     # Class labels
     classes = ["Non-spam", "Spam"]
@@ -749,7 +1307,8 @@ def plot_confusion_matrix(df_test, model):
                 color="white" if cm[i, j] > thresh else "black",
             )
     fig.tight_layout()
-    return ax
+    plt.show()
+    # return ax
 
 
 ###########################################
@@ -758,6 +1317,7 @@ def plot_confusion_matrix(df_test, model):
 
 # Inspiration: "Introduction to Machine Learning with Python", A. Muller
 # https://github.com/amueller/introduction_to_ml_with_python
+
 
 def visualize_coefficients(model, n_top_features=25):
 
@@ -808,35 +1368,38 @@ def visualize_coefficients(model, n_top_features=25):
 
     # Plot top features
     # -----------------
-    plt.figure(figsize=(18, 6))
-    plt.bar(
-        x=df_coeffs.Feature,
-        height=df_coeffs.Spam,
+
+    plt.figure(figsize=(8, 10))
+    plt.barh(
+        y=df_coeffs.Feature,
+        width=df_coeffs.Spam,
         edgecolor="black",
         label="Non-spam",
         alpha=0.3,
     )
-    plt.bar(
-        x=df_coeffs.Feature,
-        height=df_coeffs.Non_spam,
+    plt.barh(
+        y=df_coeffs.Feature,
+        width=df_coeffs.Non_spam,
         edgecolor="black",
         label="Spam",
         alpha=0.3,
     )
-    plt.ylabel("Coefficient magnitude")
+    plt.xlabel("Coefficient magnitude", **label_specs)
     plt.title(
-        "Top " + str(n_top_features) + " most important features in spam and non-spam"
+        "Top " + str(n_top_features) + " most important features in spam and non-spam",
+        **title_specs,
     )
-    plt.legend()
-    plt.xticks(rotation=90, fontsize=12)
+    plt.legend(**label_specs)
+    plt.xticks(**label_specs)
+    plt.yticks(**label_specs)
 
 
 ###########################################
 ### Function: error_analysis           ####
 ###########################################
 
-def error_analysis(df_test, model, doc_nbr, n_top=25):
 
+def error_analysis(df_test, model, doc_nbr, n_top=25):
     """
     Prints :
     - text,
@@ -856,7 +1419,7 @@ def error_analysis(df_test, model, doc_nbr, n_top=25):
     df_test["proba_1"] = y_test_probs[:, 1]
 
     # Misclassified samples
-    idx = df_test["label"] != df_test["prediction"]
+    idx = df_test["spam_label"] != df_test["prediction"]
 
     # New dataframe for misclassified samples
     df_missed = df_test.loc[idx, :]
@@ -934,7 +1497,7 @@ def error_analysis(df_test, model, doc_nbr, n_top=25):
     clean_text = "\n".join(textwrap.wrap(clean_text, 100))
     print(clean_text, "\n\n")
 
-    print("Actual class:    ", class_dict[str(temp.loc[doc_nbr, "label"])])
+    print("Actual class:    ", class_dict[str(temp.loc[doc_nbr, "spam_label"])])
     print("Predicted class: ", class_dict[str(temp.loc[doc_nbr, "prediction"])], "\n\n")
 
     print("Predicted probabilities")
@@ -976,8 +1539,71 @@ def error_analysis(df_test, model, doc_nbr, n_top=25):
 ### Function: simple_func              ####
 ###########################################
 
+
 def simple_func(x):
     if x > 0:
         return 1
     elif x == 0:
         return 0
+
+
+###########################################
+### Function: run_pca              ####
+###########################################
+
+
+def run_pca(df, N="all"):
+    """
+    This function
+    - performs PCA on the data frame
+    - plots the explained variance ratio as barplot and the cumulative explained variance as a step plot in the same figure
+    - extracts the number of components need for each multiple of 10% explained variance
+    - creates a scatterplot of the first two components
+    Output:
+    - returns the transformed data frame
+    """
+
+    # Standardize the data
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df)
+
+    # Perform PCA
+    pca = PCA()
+    X_pca = pca.fit_transform(X_scaled)
+
+    # Explained variance ratio
+    explained_variance = pca.explained_variance_ratio_
+
+    # Plot explained variance ratio and cumulative explained variance
+    plt.figure(figsize=(10, 6))
+    plt.bar(range(1, len(explained_variance) + 1), explained_variance, alpha=0.5)
+    plt.step(
+        range(1, len(explained_variance) + 1),
+        np.cumsum(explained_variance),
+        where="mid",
+        label="Cumulative explained variance",
+        color="red",
+    )
+    plt.xlabel("Number of components")
+    plt.ylabel("Explained variance ratio")
+    plt.title("PCA: Explained Variance Ratio and Cumulative Explained Variance")
+    plt.legend()
+    plt.grid()
+
+    # Extract number of components for each multiple of 10% explained variance
+    if N == "all":
+        N = np.arange(0.1, 1.1, 0.1)
+        for n in N:
+            num_components = np.argmax(np.cumsum(explained_variance) >= n) + 1
+            print(
+                f"Number of components for {n:.0%} explained variance: {num_components}"
+            )
+
+    # Scatterplot of the first two components
+    plt.figure(figsize=(8, 8))
+    plt.scatter(X_pca[:, 0], X_pca[:, 1], alpha=0.5, s=10)
+    plt.xlabel("Principal Component 1")
+    plt.ylabel("Principal Component 2")
+    plt.title("PCA: Scatterplot of the First Two Components")
+
+    return pd.DataFrame(X_pca)
